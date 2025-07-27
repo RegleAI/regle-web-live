@@ -1145,6 +1145,8 @@
         let currentUser = null;
         let currentProject = null;
         let projectConversations = {};
+        let conversationPages = {}; // Track pagination state per project
+        const MESSAGES_PER_PAGE = 20; // Load 20 conversations at a time
 
         // Authentication Functions
         async function handleLogin(event) {
@@ -1552,60 +1554,18 @@
             // Clear chat messages
             chatMessages.innerHTML = '';
             
+            // Initialize pagination state for this project
+            if (!conversationPages[projectId]) {
+                conversationPages[projectId] = {
+                    currentPage: 1,
+                    hasMorePages: true,
+                    loading: false
+                };
+            }
+            
             try {
-                // Load conversation from database using the existing table structure
-                const { data: conversations, error } = await supabase
-                    .from('conversations')
-                    .select('*')
-                    .eq('project_id', projectId)
-                    .eq('user_id', currentUser.id)
-                    .order('created_at', { ascending: true });
-                
-                if (error) {
-                    console.error('Error loading conversation:', error);
-                }
-                
-                // Initialize project conversation if it doesn't exist
-                if (!projectConversations[projectId]) {
-                    projectConversations[projectId] = [];
-                }
-                
-                if (conversations && conversations.length > 0) {
-                    // Load existing messages from database
-                    projectConversations[projectId] = [];
-                    conversations.forEach(conv => {
-                        // Add user message
-                        if (conv.user_message) {
-                            addMessageToChat(conv.user_message, 'user', false);
-                            projectConversations[projectId].push({
-                                role: 'user',
-                                content: conv.user_message,
-                                id: conv.id
-                            });
-                        }
-                        
-                        // Add AI response
-                        if (conv.ai_response) {
-                            addMessageToChat(conv.ai_response, 'assistant', false);
-                            projectConversations[projectId].push({
-                                role: 'assistant',
-                                content: conv.ai_response,
-                                id: conv.id
-                            });
-                        }
-                    });
-                } else {
-                    // Initialize new conversation with welcome message
-                    projectConversations[projectId] = [];
-                    
-                    const welcomeMessage = `Hello! I'm your building regulation assistant for the ${currentProject.name} project. I can help you with UK building regulations, compliance requirements, and specific guidance for your ${currentProject.type} project. What would you like to know?`;
-                    
-                    addMessageToChat(welcomeMessage, 'assistant', false);
-                    projectConversations[projectId].push({
-                        role: 'assistant',
-                        content: welcomeMessage
-                    });
-                }
+                // Load first page of conversations
+                await loadConversationPage(projectId, 1);
                 
             } catch (error) {
                 console.error('Error in loadProjectConversation:', error);
@@ -1620,6 +1580,238 @@
                     role: 'assistant',
                     content: welcomeMessage
                 });
+            }
+        }
+
+        async function loadConversationPage(projectId, page = 1, prepend = false) {
+            const pageState = conversationPages[projectId];
+            
+            if (pageState.loading) {
+                console.log('Already loading conversations...');
+                return;
+            }
+            
+            pageState.loading = true;
+            
+            try {
+                const offset = (page - 1) * MESSAGES_PER_PAGE;
+                
+                // Show loading indicator for older messages
+                if (page > 1) {
+                    showLoadingOlderMessages();
+                }
+                
+                // Load conversations from database with pagination
+                const { data: conversations, error } = await supabase
+                    .from('conversations')
+                    .select('*')
+                    .eq('project_id', projectId)
+                    .eq('user_id', currentUser.id)
+                    .order('created_at', { ascending: false }) // Most recent first
+                    .range(offset, offset + MESSAGES_PER_PAGE - 1);
+                
+                if (error) {
+                    console.error('Error loading conversation page:', error);
+                    return;
+                }
+                
+                // Remove loading indicator
+                if (page > 1) {
+                    hideLoadingOlderMessages();
+                }
+                
+                // Initialize project conversation if it doesn't exist
+                if (!projectConversations[projectId]) {
+                    projectConversations[projectId] = [];
+                }
+                
+                if (conversations && conversations.length > 0) {
+                    // Process conversations (newest first from DB, but we want to display oldest first)
+                    const reversedConversations = conversations.reverse();
+                    
+                    reversedConversations.forEach(conv => {
+                        // Add user message
+                        if (conv.user_message) {
+                            if (prepend) {
+                                prependMessageToChat(conv.user_message, 'user');
+                                projectConversations[projectId].unshift({
+                                    role: 'user',
+                                    content: conv.user_message,
+                                    id: conv.id
+                                });
+                            } else {
+                                addMessageToChat(conv.user_message, 'user', false);
+                                projectConversations[projectId].push({
+                                    role: 'user',
+                                    content: conv.user_message,
+                                    id: conv.id
+                                });
+                            }
+                        }
+                        
+                        // Add AI response
+                        if (conv.ai_response) {
+                            if (prepend) {
+                                prependMessageToChat(conv.ai_response, 'assistant');
+                                projectConversations[projectId].unshift({
+                                    role: 'assistant',
+                                    content: conv.ai_response,
+                                    id: conv.id
+                                });
+                            } else {
+                                addMessageToChat(conv.ai_response, 'assistant', false);
+                                projectConversations[projectId].push({
+                                    role: 'assistant',
+                                    content: conv.ai_response,
+                                    id: conv.id
+                                });
+                            }
+                        }
+                    });
+                    
+                    // Check if there are more pages
+                    if (conversations.length < MESSAGES_PER_PAGE) {
+                        pageState.hasMorePages = false;
+                        removeLoadMoreButton();
+                    } else {
+                        pageState.hasMorePages = true;
+                        if (page === 1) {
+                            addLoadMoreButton(projectId);
+                        }
+                    }
+                    
+                    pageState.currentPage = page;
+                    
+                } else if (page === 1) {
+                    // No conversations yet - show welcome message
+                    const welcomeMessage = `Hello! I'm your building regulation assistant for the ${currentProject.name} project. I can help you with UK building regulations, compliance requirements, and specific guidance for your ${currentProject.type} project. What would you like to know?`;
+                    
+                    addMessageToChat(welcomeMessage, 'assistant', false);
+                    projectConversations[projectId].push({
+                        role: 'assistant',
+                        content: welcomeMessage
+                    });
+                    
+                    pageState.hasMorePages = false;
+                }
+                
+                // Scroll to bottom for first page, maintain position for subsequent pages
+                if (page === 1) {
+                    scrollToBottom();
+                }
+                
+            } catch (error) {
+                console.error('Error loading conversation page:', error);
+                if (page > 1) {
+                    hideLoadingOlderMessages();
+                }
+            } finally {
+                pageState.loading = false;
+            }
+        }
+
+        function addLoadMoreButton(projectId) {
+            const chatMessages = document.getElementById('chatMessages');
+            const existingButton = document.getElementById('loadMoreButton');
+            
+            if (existingButton) {
+                return; // Button already exists
+            }
+            
+            const loadMoreContainer = document.createElement('div');
+            loadMoreContainer.id = 'loadMoreButton';
+            loadMoreContainer.className = 'load-more-container';
+            loadMoreContainer.innerHTML = `
+                <button class="load-more-btn" onclick="loadMoreMessages('${projectId}')">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m0 4h18"/>
+                    </svg>
+                    Load Earlier Messages
+                </button>
+            `;
+            
+            chatMessages.insertBefore(loadMoreContainer, chatMessages.firstChild);
+        }
+
+        function removeLoadMoreButton() {
+            const button = document.getElementById('loadMoreButton');
+            if (button) {
+                button.remove();
+            }
+        }
+
+        async function loadMoreMessages(projectId) {
+            const pageState = conversationPages[projectId];
+            
+            if (!pageState.hasMorePages || pageState.loading) {
+                return;
+            }
+            
+            const nextPage = pageState.currentPage + 1;
+            await loadConversationPage(projectId, nextPage, true);
+        }
+
+        function showLoadingOlderMessages() {
+            const chatMessages = document.getElementById('chatMessages');
+            const existingLoader = document.getElementById('olderMessagesLoader');
+            
+            if (existingLoader) {
+                return;
+            }
+            
+            const loaderDiv = document.createElement('div');
+            loaderDiv.id = 'olderMessagesLoader';
+            loaderDiv.className = 'loading-older-messages';
+            loaderDiv.innerHTML = `
+                <div class="loading-older-content">
+                    <div class="loading-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <span>Loading older messages...</span>
+                </div>
+            `;
+            
+            chatMessages.insertBefore(loaderDiv, chatMessages.firstChild);
+        }
+
+        function hideLoadingOlderMessages() {
+            const loader = document.getElementById('olderMessagesLoader');
+            if (loader) {
+                loader.remove();
+            }
+        }
+
+        function prependMessageToChat(content, role) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'message-avatar';
+            avatarDiv.textContent = role === 'user' ? (currentUser.email.charAt(0).toUpperCase()) : 'R';
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            bubbleDiv.textContent = content;
+            
+            if (role === 'user') {
+                messageDiv.appendChild(bubbleDiv);
+                messageDiv.appendChild(avatarDiv);
+            } else {
+                messageDiv.appendChild(avatarDiv);
+                messageDiv.appendChild(bubbleDiv);
+            }
+            
+            // Insert after any load more button
+            const loadMoreButton = document.getElementById('loadMoreButton');
+            const olderMessagesLoader = document.getElementById('olderMessagesLoader');
+            
+            if (loadMoreButton) {
+                chatMessages.insertBefore(messageDiv, loadMoreButton.nextSibling);
+            } else if (olderMessagesLoader) {
+                chatMessages.insertBefore(messageDiv, olderMessagesLoader.nextSibling);
+            } else {
+                chatMessages.insertBefore(messageDiv, chatMessages.firstChild);
             }
         }
 
