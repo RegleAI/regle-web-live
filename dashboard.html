@@ -1498,9 +1498,17 @@
                 
                 if (projectsError) throw projectsError;
                 
-                const activeProjects = projects.filter(p => p.status === 'active').length;
+                // Count total conversations using the existing table structure
+                const { data: conversations, error: conversationsError } = await supabase
+                    .from('conversations')
+                    .select('id', { count: 'exact' })
+                    .eq('user_id', currentUser.id);
+                
+                const activeProjects = projects ? projects.filter(p => p.status === 'active').length : 0;
+                const totalConversations = conversations ? conversations.length : 0;
+                
                 document.getElementById('activeProjectsCount').textContent = activeProjects;
-                document.getElementById('totalConversationsCount').textContent = projects.length;
+                document.getElementById('totalConversationsCount').textContent = totalConversations;
                 
             } catch (error) {
                 console.error('Error updating stats:', error);
@@ -1545,8 +1553,8 @@
             chatMessages.innerHTML = '';
             
             try {
-                // Load conversation from database
-                const { data: messages, error } = await supabase
+                // Load conversation from database using the existing table structure
+                const { data: conversations, error } = await supabase
                     .from('conversations')
                     .select('*')
                     .eq('project_id', projectId)
@@ -1562,16 +1570,29 @@
                     projectConversations[projectId] = [];
                 }
                 
-                if (messages && messages.length > 0) {
+                if (conversations && conversations.length > 0) {
                     // Load existing messages from database
                     projectConversations[projectId] = [];
-                    messages.forEach(msg => {
-                        addMessageToChat(msg.content, msg.role, false);
-                        projectConversations[projectId].push({
-                            role: msg.role,
-                            content: msg.content,
-                            id: msg.id
-                        });
+                    conversations.forEach(conv => {
+                        // Add user message
+                        if (conv.user_message) {
+                            addMessageToChat(conv.user_message, 'user', false);
+                            projectConversations[projectId].push({
+                                role: 'user',
+                                content: conv.user_message,
+                                id: conv.id
+                            });
+                        }
+                        
+                        // Add AI response
+                        if (conv.ai_response) {
+                            addMessageToChat(conv.ai_response, 'assistant', false);
+                            projectConversations[projectId].push({
+                                role: 'assistant',
+                                content: conv.ai_response,
+                                id: conv.id
+                            });
+                        }
                     });
                 } else {
                     // Initialize new conversation with welcome message
@@ -1580,10 +1601,6 @@
                     const welcomeMessage = `Hello! I'm your building regulation assistant for the ${currentProject.name} project. I can help you with UK building regulations, compliance requirements, and specific guidance for your ${currentProject.type} project. What would you like to know?`;
                     
                     addMessageToChat(welcomeMessage, 'assistant', false);
-                    
-                    // Save welcome message to database
-                    await saveMessageToDatabase(projectId, 'assistant', welcomeMessage);
-                    
                     projectConversations[projectId].push({
                         role: 'assistant',
                         content: welcomeMessage
@@ -1606,7 +1623,7 @@
             }
         }
 
-        async function saveMessageToDatabase(projectId, role, content) {
+        async function saveConversationToDatabase(projectId, userMessage, aiResponse, conversationId = null) {
             if (!currentUser) return null;
             
             try {
@@ -1616,21 +1633,23 @@
                         {
                             user_id: currentUser.id,
                             project_id: projectId,
-                            role: role,
-                            content: content,
+                            user_message: userMessage,
+                            ai_response: aiResponse,
+                            conversation_id: conversationId,
                             created_at: new Date().toISOString()
                         }
                     ])
                     .select();
                 
                 if (error) {
-                    console.error('Error saving message:', error);
+                    console.error('Error saving conversation:', error);
                     return null;
                 }
                 
+                console.log('Conversation saved successfully:', data[0]);
                 return data[0];
             } catch (error) {
-                console.error('Error in saveMessageToDatabase:', error);
+                console.error('Error in saveConversationToDatabase:', error);
                 return null;
             }
         }
@@ -1779,9 +1798,8 @@
                 if (data.success && data.answer) {
                     addMessageToChat(data.answer, 'assistant');
                     
-                    // Save both user message and assistant response to database
-                    await saveMessageToDatabase(currentProject.id, 'user', message);
-                    await saveMessageToDatabase(currentProject.id, 'assistant', data.answer);
+                    // Save conversation to database using the existing table structure
+                    await saveConversationToDatabase(currentProject.id, message, data.answer, data.conversationId);
                     
                     // Update conversation history
                     projectConversations[currentProject.id].push({
