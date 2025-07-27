@@ -1538,29 +1538,100 @@
             showPage('project-chat');
         }
 
-        function loadProjectConversation(projectId) {
+        async function loadProjectConversation(projectId) {
             const chatMessages = document.getElementById('chatMessages');
             
-            // Check if we have existing conversation for this project
-            if (projectConversations[projectId] && projectConversations[projectId].length > 0) {
-                // Load existing messages
-                chatMessages.innerHTML = '';
-                projectConversations[projectId].forEach(message => {
-                    addMessageToChat(message.content, message.role, false);
-                });
-            } else {
-                // Initialize new conversation
-                projectConversations[projectId] = [];
-                chatMessages.innerHTML = '';
+            // Clear chat messages
+            chatMessages.innerHTML = '';
+            
+            try {
+                // Load conversation from database
+                const { data: messages, error } = await supabase
+                    .from('conversations')
+                    .select('*')
+                    .eq('project_id', projectId)
+                    .eq('user_id', currentUser.id)
+                    .order('created_at', { ascending: true });
                 
-                // Add welcome message
+                if (error) {
+                    console.error('Error loading conversation:', error);
+                }
+                
+                // Initialize project conversation if it doesn't exist
+                if (!projectConversations[projectId]) {
+                    projectConversations[projectId] = [];
+                }
+                
+                if (messages && messages.length > 0) {
+                    // Load existing messages from database
+                    projectConversations[projectId] = [];
+                    messages.forEach(msg => {
+                        addMessageToChat(msg.content, msg.role, false);
+                        projectConversations[projectId].push({
+                            role: msg.role,
+                            content: msg.content,
+                            id: msg.id
+                        });
+                    });
+                } else {
+                    // Initialize new conversation with welcome message
+                    projectConversations[projectId] = [];
+                    
+                    const welcomeMessage = `Hello! I'm your building regulation assistant for the ${currentProject.name} project. I can help you with UK building regulations, compliance requirements, and specific guidance for your ${currentProject.type} project. What would you like to know?`;
+                    
+                    addMessageToChat(welcomeMessage, 'assistant', false);
+                    
+                    // Save welcome message to database
+                    await saveMessageToDatabase(projectId, 'assistant', welcomeMessage);
+                    
+                    projectConversations[projectId].push({
+                        role: 'assistant',
+                        content: welcomeMessage
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Error in loadProjectConversation:', error);
+                // Fallback to welcome message if database fails
                 const welcomeMessage = `Hello! I'm your building regulation assistant for the ${currentProject.name} project. I can help you with UK building regulations, compliance requirements, and specific guidance for your ${currentProject.type} project. What would you like to know?`;
-                
                 addMessageToChat(welcomeMessage, 'assistant', false);
+                
+                if (!projectConversations[projectId]) {
+                    projectConversations[projectId] = [];
+                }
                 projectConversations[projectId].push({
                     role: 'assistant',
                     content: welcomeMessage
                 });
+            }
+        }
+
+        async function saveMessageToDatabase(projectId, role, content) {
+            if (!currentUser) return null;
+            
+            try {
+                const { data, error } = await supabase
+                    .from('conversations')
+                    .insert([
+                        {
+                            user_id: currentUser.id,
+                            project_id: projectId,
+                            role: role,
+                            content: content,
+                            created_at: new Date().toISOString()
+                        }
+                    ])
+                    .select();
+                
+                if (error) {
+                    console.error('Error saving message:', error);
+                    return null;
+                }
+                
+                return data[0];
+            } catch (error) {
+                console.error('Error in saveMessageToDatabase:', error);
+                return null;
             }
         }
 
@@ -1707,6 +1778,10 @@
                 
                 if (data.success && data.answer) {
                     addMessageToChat(data.answer, 'assistant');
+                    
+                    // Save both user message and assistant response to database
+                    await saveMessageToDatabase(currentProject.id, 'user', message);
+                    await saveMessageToDatabase(currentProject.id, 'assistant', data.answer);
                     
                     // Update conversation history
                     projectConversations[currentProject.id].push({
