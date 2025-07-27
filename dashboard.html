@@ -1661,46 +1661,21 @@
             showLoadingMessage();
             
             try {
-                // Create context about the project
-                const projectContext = `Project: ${currentProject.name}
-Type: ${currentProject.type}
-Description: ${currentProject.description}
-
-Please provide specific building regulation guidance for this ${currentProject.type} project. Focus on UK building regulations and compliance requirements.`;
-
-                // Prepare conversation history
-                const conversationHistory = [
-                    { role: "system", content: "You are a UK building regulation expert assistant. Provide accurate, helpful guidance on building regulations, compliance requirements, and construction standards. Always reference relevant Approved Documents when applicable." },
-                    { role: "system", content: projectContext },
-                    ...projectConversations[currentProject.id]
-                ];
-
-                // Call Claude API
-                const response = await fetch("https://api.anthropic.com/v1/messages", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        model: "claude-sonnet-4-20250514",
-                        max_tokens: 1000,
-                        messages: conversationHistory.filter(msg => msg.role !== 'system').slice(-10) // Keep last 10 messages
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`API request failed: ${response.status}`);
-                }
-
-                const data = await response.json();
-                const assistantResponse = data.content[0].text;
-
+                // For now, let's simulate a response until we fix the API
+                // This will help us test the chat interface
+                
+                // Simulate API delay
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // Create a mock response based on the project type and message
+                let mockResponse = generateMockResponse(message, currentProject);
+                
                 // Remove loading and add assistant response
                 removeLoadingMessage();
-                addMessageToChat(assistantResponse, 'assistant');
+                addMessageToChat(mockResponse, 'assistant');
                 projectConversations[currentProject.id].push({
                     role: 'assistant',
-                    content: assistantResponse
+                    content: mockResponse
                 });
 
             } catch (error) {
@@ -1713,6 +1688,109 @@ Please provide specific building regulation guidance for this ${currentProject.t
                 sendButton.disabled = false;
                 chatInput.focus();
             }
+        }
+
+        function generateMockResponse(userMessage, project) {
+            const message = userMessage.toLowerCase();
+            const projectType = project.type.toLowerCase();
+            
+            // Building regulation responses based on keywords
+            if (message.includes('ventilation') || message.includes('part f')) {
+                return `For your ${projectType} project "${project.name}", ventilation requirements under Part F of the Building Regulations include:
+
+• Adequate ventilation for health and comfort
+• Minimum air change rates: ${projectType === 'residential' ? '0.5 ACH for dwellings' : '6-8 l/s per person for commercial spaces'}
+• Extract ventilation for kitchens and bathrooms
+• Natural or mechanical ventilation systems
+• Compliance with Approved Document F 2021 edition
+
+Would you like specific guidance on ventilation calculations or system selection for your project?`;
+            }
+            
+            if (message.includes('fire') || message.includes('part b')) {
+                return `Fire safety requirements for your ${projectType} project under Part B include:
+
+• Means of escape suitable for building occupancy
+• Fire spread prevention measures
+• Access for fire service
+• ${projectType === 'residential' ? 'Smoke alarms and fire doors where required' : 'Fire detection and alarm systems'}
+• Fire-resistant construction materials
+• Compartmentation if required
+
+The specific requirements depend on building height, occupancy, and use. What aspect of fire safety would you like to explore further?`;
+            }
+            
+            if (message.includes('insulation') || message.includes('energy') || message.includes('part l')) {
+                return `Energy efficiency requirements for your ${projectType} project under Part L include:
+
+• U-values for walls, roof, floors, and windows
+• ${projectType === 'residential' ? 'SAP calculations and Energy Performance Certificate' : 'SBEM calculations and air conditioning systems'}
+• Thermal bridging considerations
+• Air tightness testing may be required
+• Renewable energy contributions where applicable
+
+Current Part L standards are quite stringent. Would you like specific U-value targets or guidance on compliance strategies?`;
+            }
+            
+            if (message.includes('access') || message.includes('disability') || message.includes('part m')) {
+                return `Accessibility requirements under Part M for your ${projectType} project include:
+
+• ${projectType === 'residential' ? 'Category 1, 2, or 3 accessibility standards' : 'Accessible entrances and facilities'}
+• Minimum door widths and corridor widths
+• Accessible toilet facilities where required
+• Level access or ramp provisions
+• Parking requirements for disabled users
+
+The specific category depends on your building type and local planning requirements. What accessibility features are you considering?`;
+            }
+            
+            if (message.includes('structural') || message.includes('part a') || message.includes('foundations')) {
+                return `Structural requirements under Part A for your ${projectType} project include:
+
+• Adequate structural design for all loads
+• Foundation design suitable for ground conditions
+• Wall and roof structural adequacy
+• Structural calculations by qualified engineer
+• Building control approval required
+
+You'll need structural calculations and potentially ground investigation depending on your project scope. Are you looking for guidance on any specific structural elements?`;
+            }
+            
+            if (message.includes('drainage') || message.includes('part h') || message.includes('sewage')) {
+                return `Drainage requirements under Part H for your ${projectType} project include:
+
+• Adequate drainage for surface water and foul water
+• Connection to public sewers where available
+• Sustainable drainage systems (SuDS) may be required
+• Proper falls and pipe sizing
+• Access points for maintenance
+
+Surface water drainage often requires sustainable drainage solutions. Would you like guidance on SuDS requirements or foul drainage design?`;
+            }
+            
+            if (message.includes('planning') || message.includes('permission')) {
+                return `For your ${projectType} project "${project.name}", you may need:
+
+• Planning permission (depending on scale and location)
+• Building regulations approval (separate from planning)
+• Listed building consent (if applicable)
+• Conservation area consent (if applicable)
+
+Building regulations focus on technical compliance, while planning considers design and impact. Have you already obtained planning permission for this project?`;
+            }
+            
+            // General response
+            return `I can help you with building regulations for your ${projectType} project "${project.name}". 
+
+Common areas I can assist with include:
+• Ventilation requirements (Part F)
+• Fire safety (Part B) 
+• Energy efficiency (Part L)
+• Structural design (Part A)
+• Accessibility (Part M)
+• Drainage (Part H)
+
+What specific aspect of building regulations would you like guidance on? Feel free to ask about any compliance requirements, calculations, or approval processes.`;
         }
 
         // Handle Enter key in chat input
