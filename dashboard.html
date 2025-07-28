@@ -1897,9 +1897,6 @@
                 
                 console.log('Project created:', data[0]);
                 
-                // Add project to UI (it will check if it already exists)
-                await addProjectToUI(data[0]);
-                
                 // Reset form
                 event.target.reset();
                 
@@ -1908,6 +1905,9 @@
                 
                 // Go to projects page
                 showPage('projects');
+                
+                // Reload projects to show the new one
+                await loadUserProjects();
                 
                 // Update stats
                 updateDashboardStats();
