@@ -343,6 +343,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
+            position: relative;
         }
 
         .user-info {
@@ -365,6 +366,98 @@
             justify-content: center;
             color: white;
             font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        /* User Dropdown Menu */
+        .user-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 8px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+            min-width: 240px;
+            display: none;
+            z-index: 1500;
+            overflow: hidden;
+            animation: dropdownSlide 0.2s ease-out;
+        }
+
+        .user-dropdown.show {
+            display: block;
+        }
+
+        @keyframes dropdownSlide {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .user-dropdown-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+
+        .user-dropdown-email {
+            font-size: 0.875rem;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+        .user-dropdown-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: #334155;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        .user-dropdown-item:hover {
+            background: #f8fafc;
+            color: #667eea;
+        }
+
+        .user-dropdown-item.danger {
+            color: #dc2626;
+        }
+
+        .user-dropdown-item.danger:hover {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .dropdown-icon {
+            width: 18px;
+            height: 18px;
+            margin-right: 12px;
+            opacity: 0.7;
+        }
+
+        .dropdown-divider {
+            height: 1px;
+            background: #e2e8f0;
+            margin: 8px 0;
         }
 
         /* Page Content */
@@ -1346,10 +1439,39 @@
                     <div class="breadcrumb" id="breadcrumb"></div>
                 </div>
                 <div class="user-menu">
-                    <div class="user-info">
-                        <div id="userEmail" class="user-email">Loading...</div>
+                    <div class="user-avatar" id="userAvatar" onclick="toggleUserDropdown()">U</div>
+                    <div class="user-dropdown" id="userDropdown">
+                        <div class="user-dropdown-header">
+                            <div style="font-weight: 600; color: #1e293b;">My Account</div>
+                            <div class="user-dropdown-email" id="dropdownUserEmail">Loading...</div>
+                        </div>
+                        <button class="user-dropdown-item" onclick="handleDropdownClick('settings')">
+                            <svg class="dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            Account Settings
+                        </button>
+                        <button class="user-dropdown-item" onclick="handleDropdownClick('billing')">
+                            <svg class="dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                            </svg>
+                            Billing
+                        </button>
+                        <button class="user-dropdown-item" onclick="handleDropdownClick('support')">
+                            <svg class="dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                            </svg>
+                            Support
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="user-dropdown-item danger" onclick="handleLogout()">
+                            <svg class="dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                            </svg>
+                            Sign Out
+                        </button>
                     </div>
-                    <div class="user-avatar" id="userAvatar">U</div>
                 </div>
             </div>
 
@@ -1736,7 +1858,7 @@
             
             // Update user info in dashboard
             if (currentUser) {
-                document.getElementById('userEmail').textContent = currentUser.email;
+                document.getElementById('dropdownUserEmail').textContent = currentUser.email;
                 document.getElementById('userEmailSettings').value = currentUser.email;
                 const avatar = document.getElementById('userAvatar');
                 avatar.textContent = currentUser.email.charAt(0).toUpperCase();
@@ -2614,6 +2736,47 @@
         function saveSettings(event) {
             event.preventDefault();
             alert('Settings saved successfully!');
+        }
+
+        // User Dropdown Functions
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.classList.toggle('show');
+            
+            // Close dropdown when clicking outside
+            if (dropdown.classList.contains('show')) {
+                setTimeout(() => {
+                    document.addEventListener('click', closeUserDropdownOutside);
+                }, 0);
+            }
+        }
+
+        function closeUserDropdownOutside(event) {
+            const dropdown = document.getElementById('userDropdown');
+            const avatar = document.getElementById('userAvatar');
+            
+            if (!dropdown.contains(event.target) && event.target !== avatar) {
+                dropdown.classList.remove('show');
+                document.removeEventListener('click', closeUserDropdownOutside);
+            }
+        }
+
+        function handleDropdownClick(action) {
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.classList.remove('show');
+            document.removeEventListener('click', closeUserDropdownOutside);
+            
+            switch(action) {
+                case 'settings':
+                    showPage('settings');
+                    break;
+                case 'billing':
+                    alert('Billing page coming soon!');
+                    break;
+                case 'support':
+                    alert('Support page coming soon! For now, please email support@regle.co.uk');
+                    break;
+            }
         }
 
         // Chat Widget Functions
