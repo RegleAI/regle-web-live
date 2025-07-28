@@ -1491,20 +1491,43 @@
                             <div class="change">All time</div>
                         </div>
                         <div class="stat-card">
-                            <h3>Compliance Score</h3>
-                            <div class="value">98.2%</div>
-                            <div class="change">+0.5% improvement</div>
+                            <h3>Reports Remaining</h3>
+                            <div class="value" id="remainingReports">10</div>
+                            <div class="change">Monthly limit</div>
                         </div>
                     </div>
 
                     <div class="dashboard-grid">
                         <div class="content-card">
-                            <h2 style="margin-bottom: 16px; color: #1e293b;">Recent Activity</h2>
-                            <p style="color: #64748b; margin-bottom: 20px;">Your latest building regulation assessments and report generation.</p>
-                            <div id="recentActivity">
-                                <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 12px;">
-                                    <strong>Welcome to Regle Assessment Tool!</strong> - Start by creating your first project
-                                    <div style="font-size: 0.875rem; color: #64748b; margin-top: 4px;">Just now</div>
+                            <h2 style="margin-bottom: 16px; color: #1e293b;">Latest News</h2>
+                            <p style="color: #64748b; margin-bottom: 20px;">Stay updated with building regulation changes and platform updates.</p>
+                            <div id="latestNews">
+                                <div style="padding: 16px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 12px; cursor: pointer;" onclick="window.open('https://www.gov.uk/government/news/building-regulations', '_blank')">
+                                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                                        <div>
+                                            <strong style="color: #1e293b;">New Energy Efficiency Standards for 2025</strong>
+                                            <div style="font-size: 0.875rem; color: #64748b; margin-top: 4px;">Major updates to Part L regarding energy performance in new builds</div>
+                                        </div>
+                                        <span style="font-size: 0.75rem; color: #64748b; white-space: nowrap;">2 days ago</span>
+                                    </div>
+                                </div>
+                                <div style="padding: 16px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 12px; cursor: pointer;" onclick="alert('Full article coming soon!')">
+                                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                                        <div>
+                                            <strong style="color: #1e293b;">Updated Fire Safety Regulations</strong>
+                                            <div style="font-size: 0.875rem; color: #64748b; margin-top: 4px;">Important changes to Approved Document B following recent consultations</div>
+                                        </div>
+                                        <span style="font-size: 0.75rem; color: #64748b; white-space: nowrap;">1 week ago</span>
+                                    </div>
+                                </div>
+                                <div style="padding: 16px; background: #fff4e6; border-radius: 8px; border-left: 4px solid #f97316; margin-bottom: 12px; cursor: pointer;" onclick="alert('Feature details coming soon!')">
+                                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                                        <div>
+                                            <strong style="color: #1e293b;">🎉 New Feature: AI-Powered Report Insights</strong>
+                                            <div style="font-size: 0.875rem; color: #64748b; margin-top: 4px;">Get instant answers about your compliance reports with our new chat feature</div>
+                                        </div>
+                                        <span style="font-size: 0.75rem; color: #64748b; white-space: nowrap;">3 days ago</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2217,6 +2240,11 @@
                 
                 document.getElementById('activeProjectsCount').textContent = activeProjects;
                 document.getElementById('completedReportsCount').textContent = completedReports;
+                
+                // Calculate remaining reports (mock subscription limit)
+                const monthlyLimit = 10; // This would come from user's subscription level
+                const remainingReports = Math.max(0, monthlyLimit - completedReports);
+                document.getElementById('remainingReports').textContent = remainingReports;
                 
             } catch (error) {
                 console.error('Error updating stats:', error);
