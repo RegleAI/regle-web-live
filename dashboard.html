@@ -487,6 +487,11 @@
             padding: 24px;
         }
 
+        /* Dashboard specific - no scroll */
+        .page-content:has(#dashboard.active) {
+            overflow-y: hidden;
+        }
+
         .page {
             display: none;
         }
@@ -496,11 +501,16 @@
         }
 
         /* Dashboard Page */
+        #dashboard {
+            height: 100%;
+            overflow: hidden;
+        }
+
         .dashboard-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 24px;
-            height: calc(100vh - 140px);
+            height: calc(100vh - 320px);
         }
 
         .stats-section {
@@ -1829,7 +1839,7 @@
                         <div class="content-card">
                             <h2 style="margin-bottom: 16px; color: #1e293b;">Latest News</h2>
                             <p style="color: #64748b; margin-bottom: 20px;">Stay updated with building regulation changes and platform updates.</p>
-                            <div id="latestNews">
+                            <div id="latestNews" style="flex: 1; overflow-y: auto;">
                                 <div style="padding: 16px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 12px; cursor: pointer;" onclick="window.open('https://www.gov.uk/government/news/building-regulations', '_blank')">
                                     <div style="display: flex; justify-content: space-between; align-items: start;">
                                         <div>
@@ -2602,6 +2612,150 @@
             }
         }
 
+        // Project Functions
+        async function loadUserProjects() {
+            if (!currentUser) return;
+            
+            try {
+                const { data: projects, error } = await supabase
+                    .from('projects')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                
+                const projectsContainer = document.getElementById('projectsContainer');
+                // Clear existing content to prevent duplicates
+                projectsContainer.innerHTML = '';
+                
+                if (projects.length === 0) {
+                    projectsContainer.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No projects yet</h3>
+                            <p>Create your first building regulation assessment to get started.</p>
+                            <div style="margin-top: 24px;">
+                                <button class="btn-primary" onclick="showPage('create-project')">Create Your First Project</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Use Promise.all to handle async addProjectToUI
+                    await Promise.all(projects.map(project => addProjectToUI(project)));
+                }
+                
+                console.log(`Loaded ${projects.length} projects for user`);
+                
+            } catch (error) {
+                console.error('Error loading projects:', error);
+                const projectsContainer = document.getElementById('projectsContainer');
+                projectsContainer.innerHTML = `
+                    <div class="error-state">
+                        <h3>Error loading projects</h3>
+                        <p>${error.message}</p>
+                        <button class="btn-primary" onclick="loadUserProjects()">Try Again</button>
+                    </div>
+                `;
+            }
+        }
+
+        async function addProjectToUI(project) {
+            const projectsContainer = document.getElementById('projectsContainer');
+            
+            // Check if the empty state message exists and remove it
+            const emptyState = projectsContainer.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+            
+            // Check if this project already exists in the UI
+            const existingCard = document.querySelector(`[data-project-id="${project.id}"]`);
+            if (existingCard) {
+                console.log(`Project ${project.id} already exists in UI, skipping...`);
+                return;
+            }
+            
+            // Check if project has a report
+            let hasReport = false;
+            let reportId = null;
+            
+            try {
+                const { data: report, error } = await supabase
+                    .from('reports')
+                    .select('id')
+                    .eq('project_id', project.id)
+                    .single();
+                
+                if (report && !error) {
+                    hasReport = true;
+                    reportId = report.id;
+                }
+            } catch (error) {
+                // No report exists
+            }
+            
+            // Create project card HTML
+            const projectCard = document.createElement('div');
+            projectCard.className = 'project-card';
+            projectCard.setAttribute('data-project-id', project.id);
+            
+            const actionButtons = hasReport 
+                ? `<button class="btn-secondary" onclick="viewProjectReport('${project.id}', '${reportId}')">View Report</button>`
+                : `<button class="btn-secondary" onclick="startQuestionnaire('${project.id}')">Start Assessment</button>`;
+            
+            projectCard.innerHTML = `
+                <div class="project-header">
+                    <h3>${project.name}</h3>
+                    <span class="project-type">${project.type}</span>
+                </div>
+                <p class="project-description">${project.description || 'No description provided'}</p>
+                <div class="project-meta">
+                    <span class="project-status status-${hasReport ? 'completed' : project.status}">${hasReport ? 'completed' : project.status}</span>
+                    <span class="project-date">Created ${new Date(project.created_at).toLocaleDateString()}</span>
+                </div>
+                <div class="project-actions">
+                    ${actionButtons}
+                    <button class="btn-secondary" onclick="editProject('${project.id}')">Edit</button>
+                </div>
+            `;
+            
+            projectsContainer.appendChild(projectCard);
+        }
+
+        async function updateDashboardStats() {
+            if (!currentUser) return;
+            
+            try {
+                // Count active projects
+                const { data: projects, error: projectsError } = await supabase
+                    .from('projects')
+                    .select('id, status')
+                    .eq('user_id', currentUser.id);
+                
+                if (projectsError) throw projectsError;
+                
+                // Count completed reports
+                const { data: reports, error: reportsError } = await supabase
+                    .from('reports')
+                    .select('id', { count: 'exact' })
+                    .eq('user_id', currentUser.id);
+                
+                const activeProjects = projects ? projects.filter(p => p.status === 'active').length : 0;
+                const completedReports = reports ? reports.length : 0;
+                
+                document.getElementById('activeProjectsCount').textContent = activeProjects;
+                document.getElementById('completedReportsCount').textContent = completedReports;
+                
+                // Calculate remaining reports (mock subscription limit)
+                const monthlyLimit = 10; // This would come from user's subscription level
+                const remainingReports = Math.max(0, monthlyLimit - completedReports);
+                document.getElementById('remainingReports').textContent = remainingReports;
+                
+            } catch (error) {
+                console.error('Error updating stats:', error);
+            }
+        }
+
         // Regulation Library Functions
         function initializeRegulationLibrary() {
             allDocuments = [...regulationDocuments];
@@ -2736,6 +2890,47 @@
             }
         }
 
+        // User Dropdown Functions
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.classList.toggle('show');
+            
+            // Close dropdown when clicking outside
+            if (dropdown.classList.contains('show')) {
+                setTimeout(() => {
+                    document.addEventListener('click', closeUserDropdownOutside);
+                }, 0);
+            }
+        }
+
+        function closeUserDropdownOutside(event) {
+            const dropdown = document.getElementById('userDropdown');
+            const avatar = document.getElementById('userAvatar');
+            
+            if (!dropdown.contains(event.target) && event.target !== avatar) {
+                dropdown.classList.remove('show');
+                document.removeEventListener('click', closeUserDropdownOutside);
+            }
+        }
+
+        function handleDropdownClick(action) {
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.classList.remove('show');
+            document.removeEventListener('click', closeUserDropdownOutside);
+            
+            switch(action) {
+                case 'settings':
+                    showPage('settings');
+                    break;
+                case 'billing':
+                    alert('Billing page coming soon!');
+                    break;
+                case 'support':
+                    alert('Support page coming soon! For now, please email support@regle.co.uk');
+                    break;
+            }
+        }
+
         // Project Functions
         async function createProject(event) {
             event.preventDefault();
@@ -2837,149 +3032,6 @@
             if (statusElement) {
                 statusElement.className = `project-status status-${hasReport ? 'completed' : 'active'}`;
                 statusElement.textContent = hasReport ? 'completed' : 'active';
-            }
-        }
-
-        async function addProjectToUI(project) {
-            const projectsContainer = document.getElementById('projectsContainer');
-            
-            // Check if the empty state message exists and remove it
-            const emptyState = projectsContainer.querySelector('.empty-state');
-            if (emptyState) {
-                emptyState.remove();
-            }
-            
-            // Check if this project already exists in the UI
-            const existingCard = document.querySelector(`[data-project-id="${project.id}"]`);
-            if (existingCard) {
-                console.log(`Project ${project.id} already exists in UI, skipping...`);
-                return;
-            }
-            
-            // Check if project has a report
-            let hasReport = false;
-            let reportId = null;
-            
-            try {
-                const { data: report, error } = await supabase
-                    .from('reports')
-                    .select('id')
-                    .eq('project_id', project.id)
-                    .single();
-                
-                if (report && !error) {
-                    hasReport = true;
-                    reportId = report.id;
-                }
-            } catch (error) {
-                // No report exists
-            }
-            
-            // Create project card HTML
-            const projectCard = document.createElement('div');
-            projectCard.className = 'project-card';
-            projectCard.setAttribute('data-project-id', project.id);
-            
-            const actionButtons = hasReport 
-                ? `<button class="btn-secondary" onclick="viewProjectReport('${project.id}', '${reportId}')">View Report</button>`
-                : `<button class="btn-secondary" onclick="startQuestionnaire('${project.id}')">Start Assessment</button>`;
-            
-            projectCard.innerHTML = `
-                <div class="project-header">
-                    <h3>${project.name}</h3>
-                    <span class="project-type">${project.type}</span>
-                </div>
-                <p class="project-description">${project.description || 'No description provided'}</p>
-                <div class="project-meta">
-                    <span class="project-status status-${hasReport ? 'completed' : project.status}">${hasReport ? 'completed' : project.status}</span>
-                    <span class="project-date">Created ${new Date(project.created_at).toLocaleDateString()}</span>
-                </div>
-                <div class="project-actions">
-                    ${actionButtons}
-                    <button class="btn-secondary" onclick="editProject('${project.id}')">Edit</button>
-                </div>
-            `;
-            
-            projectsContainer.appendChild(projectCard);
-        }
-
-        async function loadUserProjects() {
-            if (!currentUser) return;
-            
-            try {
-                const { data: projects, error } = await supabase
-                    .from('projects')
-                    .select('*')
-                    .eq('user_id', currentUser.id)
-                    .order('created_at', { ascending: false });
-                
-                if (error) throw error;
-                
-                const projectsContainer = document.getElementById('projectsContainer');
-                // Clear existing content to prevent duplicates
-                projectsContainer.innerHTML = '';
-                
-                if (projects.length === 0) {
-                    projectsContainer.innerHTML = `
-                        <div class="empty-state">
-                            <h3>No projects yet</h3>
-                            <p>Create your first building regulation assessment to get started.</p>
-                            <div style="margin-top: 24px;">
-                                <button class="btn-primary" onclick="showPage('create-project')">Create Your First Project</button>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    // Use Promise.all to handle async addProjectToUI
-                    await Promise.all(projects.map(project => addProjectToUI(project)));
-                }
-                
-                console.log(`Loaded ${projects.length} projects for user`);
-                
-            } catch (error) {
-                console.error('Error loading projects:', error);
-                const projectsContainer = document.getElementById('projectsContainer');
-                projectsContainer.innerHTML = `
-                    <div class="error-state">
-                        <h3>Error loading projects</h3>
-                        <p>${error.message}</p>
-                        <button class="btn-primary" onclick="loadUserProjects()">Try Again</button>
-                    </div>
-                `;
-            }
-        }
-
-        async function updateDashboardStats() {
-            if (!currentUser) return;
-            
-            try {
-                // Count active projects
-                const { data: projects, error: projectsError } = await supabase
-                    .from('projects')
-                    .select('id, status')
-                    .eq('user_id', currentUser.id);
-                
-                if (projectsError) throw projectsError;
-                
-                // Count completed reports
-                const { data: reports, error: reportsError } = await supabase
-                    .from('reports')
-                    .select('id', { count: 'exact' })
-                    .eq('user_id', currentUser.id);
-                
-                const activeProjects = projects ? projects.filter(p => p.status === 'active').length : 0;
-                const completedReports = reports ? reports.length : 0;
-                
-                document.getElementById('activeProjectsCount').textContent = activeProjects;
-                document.getElementById('completedReportsCount').textContent = completedReports;
-                
-                // Calculate remaining reports (mock subscription limit)
-                const monthlyLimit = 10; // This would come from user's subscription level
-                const remainingReports = Math.max(0, monthlyLimit - completedReports);
-                document.getElementById('remainingReports').textContent = remainingReports;
-                
-            } catch (error) {
-                console.error('Error updating stats:', error);
             }
         }
 
@@ -3189,11 +3241,6 @@
             }
         }
 
-        function viewReport(reportId) {
-            // Load and display the report
-            loadReport(reportId);
-        }
-
         function displayReport(reportRecord) {
             const reportData = JSON.parse(reportRecord.report_data);
             currentReportData = reportData; // Store for chatbot use
@@ -3307,236 +3354,6 @@
             
             // Update stats
             updateDashboardStats();
-        }
-
-        function generateAnswersSummary(reportData) {
-            const questions = questionTemplates[reportData.projectType] || questionTemplates.residential;
-            let summary = '<ul>';
-            
-            questions.forEach(q => {
-                const answer = reportData.answers[q.id] || 'Not answered';
-                summary += `<li><strong>${q.question}</strong><br>Answer: ${answer}</li>`;
-            });
-            
-            summary += '</ul>';
-            return summary;
-        }
-
-        function generateComplianceAnalysis(reportData) {
-            // This is a simplified analysis - in a real system, this would be much more sophisticated
-            let analysis = '<h3>Ventilation Requirements</h3>';
-            
-            if (reportData.projectType === 'residential') {
-                const ventilationType = reportData.answers.q3;
-                analysis += `<p>Based on your selection of ${ventilationType}, the following requirements apply:</p>`;
-                analysis += '<ul>';
-                
-                if (ventilationType === 'Natural ventilation') {
-                    analysis += '<li>Background ventilators required in all habitable rooms</li>';
-                    analysis += '<li>Extract ventilation required in wet rooms</li>';
-                    analysis += '<li>Minimum ventilator sizes as per Table 1.7 of Approved Document F</li>';
-                } else if (ventilationType === 'Mechanical extract') {
-                    analysis += '<li>Continuous extract rates as per Table 1.2</li>';
-                    analysis += '<li>Minimum whole dwelling ventilation rate required</li>';
-                    analysis += '<li>Background ventilators in habitable rooms</li>';
-                }
-                
-                analysis += '</ul>';
-            }
-            
-            analysis += '<h3>Air Permeability</h3>';
-            analysis += '<p>Target air permeability should be achieved through appropriate construction detailing and testing.</p>';
-            
-            return analysis;
-        }
-
-        function generateRecommendations(reportData) {
-            let recommendations = '<ul>';
-            
-            // Add specific recommendations based on answers
-            if (reportData.answers.q4 === 'Yes') {
-                recommendations += '<li>Rooms without windows require mechanical ventilation at specified rates</li>';
-            }
-            
-            recommendations += '<li>Ensure all ventilation systems are commissioned and tested</li>';
-            recommendations += '<li>Provide clear maintenance instructions to building occupants</li>';
-            recommendations += '<li>Consider energy efficiency in ventilation design</li>';
-            
-            recommendations += '</ul>';
-            return recommendations;
-        }
-
-        async function updateProjectStatus(projectId, status) {
-            try {
-                const { error } = await supabase
-                    .from('projects')
-                    .update({ status: status })
-                    .eq('id', projectId);
-                
-                if (error) throw error;
-                
-            } catch (error) {
-                console.error('Error updating project status:', error);
-            }
-        }
-
-        async function viewProjectReport(projectId, reportId) {
-            // If reportId is provided, use it directly
-            if (reportId && reportId !== 'null') {
-                loadReport(reportId);
-                return;
-            }
-            
-            // Otherwise, fetch the report for this project
-            try {
-                const { data: report, error } = await supabase
-                    .from('reports')
-                    .select('*')
-                    .eq('project_id', projectId)
-                    .single();
-                
-                if (error) throw error;
-                
-                if (report) {
-                    displayReport(report);
-                } else {
-                    alert('No report found for this project. Please complete the assessment first.');
-                }
-                
-            } catch (error) {
-                console.error('Error loading project report:', error);
-                alert('Error loading report. Please try again.');
-            }
-        }
-
-        async function loadReport(reportId) {
-            try {
-                const { data: report, error } = await supabase
-                    .from('reports')
-                    .select('*')
-                    .eq('id', reportId)
-                    .single();
-                
-                if (error) throw error;
-                
-                displayReport(report);
-                
-            } catch (error) {
-                console.error('Error loading report:', error);
-                alert('Error loading report');
-            }
-        }
-
-        function downloadReport(reportId) {
-            // In a real implementation, this would generate and download a PDF
-            alert('PDF download functionality would be implemented here. Report ID: ' + reportId);
-        }
-
-        function downloadReportPDF(reportId) {
-            downloadReport(reportId);
-        }
-
-        function addMessageToChat(content, role, animate = true) {
-            const chatMessages = document.getElementById('chatMessages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}`;
-            
-            const avatarDiv = document.createElement('div');
-            avatarDiv.className = 'message-avatar';
-            avatarDiv.textContent = role === 'user' ? (currentUser.email.charAt(0).toUpperCase()) : 'R';
-            
-            const bubbleDiv = document.createElement('div');
-            bubbleDiv.className = 'message-bubble';
-            bubbleDiv.textContent = content;
-            
-            if (role === 'user') {
-                messageDiv.appendChild(bubbleDiv);
-                messageDiv.appendChild(avatarDiv);
-            } else {
-                messageDiv.appendChild(avatarDiv);
-                messageDiv.appendChild(bubbleDiv);
-            }
-            
-            if (animate) {
-                messageDiv.style.opacity = '0';
-                messageDiv.style.transform = 'translateY(20px)';
-            }
-            
-            chatMessages.appendChild(messageDiv);
-            
-            if (animate) {
-                requestAnimationFrame(() => {
-                    messageDiv.style.transition = 'all 0.3s ease';
-                    messageDiv.style.opacity = '1';
-                    messageDiv.style.transform = 'translateY(0)';
-                });
-            }
-            
-            // Scroll to bottom
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        // Handle Enter key in chat input
-        document.addEventListener('DOMContentLoaded', function() {
-            const chatInput = document.getElementById('chatInput');
-            if (chatInput) {
-                chatInput.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        sendAnswer();
-                    }
-                });
-            }
-        });
-
-        function editProject(projectId) {
-            alert(`Editing project ${projectId} - Edit functionality coming soon!`);
-        }
-
-        function saveSettings(event) {
-            event.preventDefault();
-            alert('Settings saved successfully!');
-        }
-
-        // User Dropdown Functions
-        function toggleUserDropdown() {
-            const dropdown = document.getElementById('userDropdown');
-            dropdown.classList.toggle('show');
-            
-            // Close dropdown when clicking outside
-            if (dropdown.classList.contains('show')) {
-                setTimeout(() => {
-                    document.addEventListener('click', closeUserDropdownOutside);
-                }, 0);
-            }
-        }
-
-        function closeUserDropdownOutside(event) {
-            const dropdown = document.getElementById('userDropdown');
-            const avatar = document.getElementById('userAvatar');
-            
-            if (!dropdown.contains(event.target) && event.target !== avatar) {
-                dropdown.classList.remove('show');
-                document.removeEventListener('click', closeUserDropdownOutside);
-            }
-        }
-
-        function handleDropdownClick(action) {
-            const dropdown = document.getElementById('userDropdown');
-            dropdown.classList.remove('show');
-            document.removeEventListener('click', closeUserDropdownOutside);
-            
-            switch(action) {
-                case 'settings':
-                    showPage('settings');
-                    break;
-                case 'billing':
-                    alert('Billing page coming soon!');
-                    break;
-                case 'support':
-                    alert('Support page coming soon! For now, please email support@regle.co.uk');
-                    break;
-            }
         }
 
         // Chat Widget Functions
@@ -3673,6 +3490,200 @@
             loading.classList.remove('show');
         }
 
+        function generateAnswersSummary(reportData) {
+            const questions = questionTemplates[reportData.projectType] || questionTemplates.residential;
+            let summary = '<ul>';
+            
+            questions.forEach(q => {
+                const answer = reportData.answers[q.id] || 'Not answered';
+                summary += `<li><strong>${q.question}</strong><br>Answer: ${answer}</li>`;
+            });
+            
+            summary += '</ul>';
+            return summary;
+        }
+
+        function generateComplianceAnalysis(reportData) {
+            // This is a simplified analysis - in a real system, this would be much more sophisticated
+            let analysis = '<h3>Ventilation Requirements</h3>';
+            
+            if (reportData.projectType === 'residential') {
+                const ventilationType = reportData.answers.q3;
+                analysis += `<p>Based on your selection of ${ventilationType}, the following requirements apply:</p>`;
+                analysis += '<ul>';
+                
+                if (ventilationType === 'Natural ventilation') {
+                    analysis += '<li>Background ventilators required in all habitable rooms</li>';
+                    analysis += '<li>Extract ventilation required in wet rooms</li>';
+                    analysis += '<li>Minimum ventilator sizes as per Table 1.7 of Approved Document F</li>';
+                } else if (ventilationType === 'Mechanical extract') {
+                    analysis += '<li>Continuous extract rates as per Table 1.2</li>';
+                    analysis += '<li>Minimum whole dwelling ventilation rate required</li>';
+                    analysis += '<li>Background ventilators in habitable rooms</li>';
+                }
+                
+                analysis += '</ul>';
+            }
+            
+            analysis += '<h3>Air Permeability</h3>';
+            analysis += '<p>Target air permeability should be achieved through appropriate construction detailing and testing.</p>';
+            
+            return analysis;
+        }
+
+        function generateRecommendations(reportData) {
+            let recommendations = '<ul>';
+            
+            // Add specific recommendations based on answers
+            if (reportData.answers.q4 === 'Yes') {
+                recommendations += '<li>Rooms without windows require mechanical ventilation at specified rates</li>';
+            }
+            
+            recommendations += '<li>Ensure all ventilation systems are commissioned and tested</li>';
+            recommendations += '<li>Provide clear maintenance instructions to building occupants</li>';
+            recommendations += '<li>Consider energy efficiency in ventilation design</li>';
+            
+            recommendations += '</ul>';
+            return recommendations;
+        }
+
+        async function updateProjectStatus(projectId, status) {
+            try {
+                const { error } = await supabase
+                    .from('projects')
+                    .update({ status: status })
+                    .eq('id', projectId);
+                
+                if (error) throw error;
+                
+            } catch (error) {
+                console.error('Error updating project status:', error);
+            }
+        }
+
+        async function viewProjectReport(projectId, reportId) {
+            // If reportId is provided, use it directly
+            if (reportId && reportId !== 'null') {
+                loadReport(reportId);
+                return;
+            }
+            
+            // Otherwise, fetch the report for this project
+            try {
+                const { data: report, error } = await supabase
+                    .from('reports')
+                    .select('*')
+                    .eq('project_id', projectId)
+                    .single();
+                
+                if (error) throw error;
+                
+                if (report) {
+                    displayReport(report);
+                } else {
+                    alert('No report found for this project. Please complete the assessment first.');
+                }
+                
+            } catch (error) {
+                console.error('Error loading project report:', error);
+                alert('Error loading report. Please try again.');
+            }
+        }
+
+        async function loadReport(reportId) {
+            try {
+                const { data: report, error } = await supabase
+                    .from('reports')
+                    .select('*')
+                    .eq('id', reportId)
+                    .single();
+                
+                if (error) throw error;
+                
+                displayReport(report);
+                
+            } catch (error) {
+                console.error('Error loading report:', error);
+                alert('Error loading report');
+            }
+        }
+
+        function downloadReportPDF(reportId) {
+            // In a real implementation, this would generate and download a PDF
+            alert('PDF download functionality would be implemented here. Report ID: ' + reportId);
+        }
+
+        function addMessageToChat(content, role, animate = true) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'message-avatar';
+            avatarDiv.textContent = role === 'user' ? (currentUser.email.charAt(0).toUpperCase()) : 'R';
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            bubbleDiv.textContent = content;
+            
+            if (role === 'user') {
+                messageDiv.appendChild(bubbleDiv);
+                messageDiv.appendChild(avatarDiv);
+            } else {
+                messageDiv.appendChild(avatarDiv);
+                messageDiv.appendChild(bubbleDiv);
+            }
+            
+            if (animate) {
+                messageDiv.style.opacity = '0';
+                messageDiv.style.transform = 'translateY(20px)';
+            }
+            
+            chatMessages.appendChild(messageDiv);
+            
+            if (animate) {
+                requestAnimationFrame(() => {
+                    messageDiv.style.transition = 'all 0.3s ease';
+                    messageDiv.style.opacity = '1';
+                    messageDiv.style.transform = 'translateY(0)';
+                });
+            }
+            
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Handle Enter key in chat input
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatInput = document.getElementById('chatInput');
+            if (chatInput) {
+                chatInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendAnswer();
+                    }
+                });
+            }
+        });
+
+        function editProject(projectId) {
+            alert(`Edit project ${projectId} - coming soon!`);
+        }
+
+        function saveSettings(event) {
+            event.preventDefault();
+            alert('Settings saved successfully!');
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, checking user session...');
+            checkUserSession();
+            
+            // Initialize regulation library
+            initializeRegulationLibrary();
+        });
+
         async function checkUserSession() {
             try {
                 const { data: { session }, error } = await supabase.auth.getSession();
@@ -3696,27 +3707,6 @@
                 showLoginForm();
             }
         }
-
-        // Initialize the application
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, checking user session...');
-            checkUserSession();
-            
-            // Initialize regulation library
-            initializeRegulationLibrary();
-        });
-
-        // Add search functionality with Enter key
-        document.addEventListener('DOMContentLoaded', function() {
-            const searchInput = document.getElementById('documentSearch');
-            if (searchInput) {
-                searchInput.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter') {
-                        filterDocuments();
-                    }
-                });
-            }
-        });
 
         // Listen for auth state changes
         supabase.auth.onAuthStateChange((event, session) => {
